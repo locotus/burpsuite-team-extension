@@ -16,6 +16,8 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
+import java.security.KeyStore;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Date;
@@ -206,29 +208,31 @@ public class SharedValues {
     }
 
     HttpsURLConnection getUnsafeURL(URL url) throws NoSuchAlgorithmException, KeyManagementException, IOException {
-        TrustManager[] trustAllCerts =
-                new TrustManager[]{new X509TrustManager() {
-                    public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                        return null;
-                    }
+        if (certFile == null || !certFile.exists()) {
+            throw new IOException("Certificate file must be provided for secure connection.");
+        }
 
-                    public void checkClientTrusted(X509Certificate[] certs, String authType) {
-                    }
+        try {
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            X509Certificate cert = (X509Certificate) cf.generateCertificate(
+                    new java.io.FileInputStream(certFile));
 
-                    public void checkServerTrusted(X509Certificate[] certs, String authType) {
-                    }
-                }
-                };
+            KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+            keyStore.load(null, null);
+            keyStore.setCertificateEntry("snyk-server", cert);
 
-        // Install the all-trusting trust manager
-        SSLContext sc = SSLContext.getInstance("SSL");
-        sc.init(null, trustAllCerts, new java.security.SecureRandom());
-        HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            tmf.init(keyStore);
+            TrustManager[] trustManagers = tmf.getTrustManagers();
 
-        // Create all-trusting host name verifier
+            SSLContext sc = SSLContext.getInstance("TLS");
+            sc.init(null, trustManagers, new java.security.SecureRandom());
+            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+        } catch (java.security.KeyStoreException | java.security.cert.CertificateException uncleared) {
+            throw new IOException("Failed to initialize SSL context: " + uncleared.getMessage());
+        }
+
         HostnameVerifier allHostsValid = (hostname, session) -> true;
-
-        // Install the all-trusting host verifier
         HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
         return (HttpsURLConnection) url.openConnection();
     }
