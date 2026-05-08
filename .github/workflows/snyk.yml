@@ -19,7 +19,7 @@ jobs:
       - name: Install Snyk CLI
         run: |
           curl -sL https://static.snyk.io/cli/latest/snyk-linux -o snyk
-          chmod x snyk
+          chmod u+x snyk
           echo "./snyk" >> $GITHUB_PATH
 
       - name: Run Snyk SCA
